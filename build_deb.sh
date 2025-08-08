@@ -29,10 +29,29 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Get Ubuntu codename
+get_ubuntu_codename() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        echo "$VERSION_CODENAME"
+    elif [ -f /etc/lsb-release ]; then
+        . /etc/lsb-release
+        echo "$DISTRIB_CODENAME"
+    else
+        # Fallback: try lsb_release command
+        if command -v lsb_release &> /dev/null; then
+            lsb_release -cs
+        else
+            echo "unknown"
+        fi
+    fi
+}
+
 # Project information
 PROJECT_NAME="mavdump"
 VERSION="1.0.0"
 ARCHITECTURE="$(dpkg --print-architecture)"
+UBUNTU_CODENAME="$(get_ubuntu_codename)"
 MAINTAINER="JinYan Wang <auto@auto.com>"
 DESCRIPTION="MAVLink network packet analyzer tool"
 LONG_DESCRIPTION="A tool for capturing and parsing MAVLink packets from network traffic, supporting both file parsing and real-time capture modes."
@@ -264,7 +283,7 @@ build_deb_package() {
     print_status "Building DEB package..."
     
     local pkg_dir="debian/${PROJECT_NAME}"
-    local output_file="${PROJECT_NAME}_${VERSION}_${ARCHITECTURE}.deb"
+    local output_file="${PROJECT_NAME}_${VERSION}-${UBUNTU_CODENAME}_${ARCHITECTURE}.deb"
     
     # Set correct permissions
     find "${pkg_dir}" -type f -exec chmod 644 {} \;
@@ -283,7 +302,7 @@ build_deb_package() {
 verify_deb_package() {
     print_status "Verifying DEB package..."
     
-    local deb_file="${PROJECT_NAME}_${VERSION}_${ARCHITECTURE}.deb"
+    local deb_file="${PROJECT_NAME}_${VERSION}-${UBUNTU_CODENAME}_${ARCHITECTURE}.deb"
     
     if [ ! -f "${deb_file}" ]; then
         print_error "DEB package file does not exist: ${deb_file}"
@@ -308,7 +327,7 @@ verify_deb_package() {
 
 # Show installation instructions
 show_installation_instructions() {
-    local deb_file="${PROJECT_NAME}_${VERSION}_${ARCHITECTURE}.deb"
+    local deb_file="${PROJECT_NAME}_${VERSION}-${UBUNTU_CODENAME}_${ARCHITECTURE}.deb"
     
     echo ""
     print_success "=================================="
@@ -349,6 +368,15 @@ main() {
         print_error "Please run this script from the mavdump project root directory"
         exit 1
     fi
+    
+    # Display build information
+    print_status "Build Configuration:"
+    echo "  Project Name: ${PROJECT_NAME}"
+    echo "  Version: ${VERSION}"
+    echo "  Architecture: ${ARCHITECTURE}"
+    echo "  Ubuntu Codename: ${UBUNTU_CODENAME}"
+    echo "  Package Name: ${PROJECT_NAME}_${VERSION}-${UBUNTU_CODENAME}_${ARCHITECTURE}.deb"
+    echo ""
     
     # Execute build steps
     check_dependencies
