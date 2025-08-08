@@ -35,6 +35,7 @@ include_directories(
     ${mavlink_SOURCE_DIR}
 )
 
+find_package(Threads REQUIRED)
 # PCAP 库依赖配置
 find_package(PkgConfig REQUIRED)
 
@@ -60,6 +61,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 # 链接库
 target_link_libraries(${PROJECT_NAME}
     ${PCAP_LIBRARIES}
+    Threads::Threads
 )
 
 # 编译定义

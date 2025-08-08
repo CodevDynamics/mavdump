@@ -304,10 +304,10 @@ void MavlinkNetworkAnalyzer::parse_mavlink_message(const uint8_t* mavlink_data, 
     
     if (should_show_verbose(msg->msgid)) {
         std::string msg_name = get_mavlink_message_name(msg->msgid);
-        log_stream << "\n\t" << msg_name;
+        log_stream << "\n  " << msg_name;
         // If hexadecimal display is enabled, show raw message data
         if (show_hex_) {
-            log_stream << format_hex_output(mavlink_data, data_len);
+            log_stream << format_hex_output(mavlink_data + 2, data_len);
         } else {
             log_stream << format_mavlink_message_content(*msg);
         }
@@ -338,7 +338,7 @@ std::string MavlinkNetworkAnalyzer::format_mavlink_message_content(const mavlink
         
         for (unsigned i = 0; i < info->num_fields; ++i) {
             const mavlink_field_info_t& field = info->fields[i];
-            content_stream << "\n\t  " << field.name << ": ";
+            content_stream << "\n    " << field.name << ": ";
             
             // Format output based on field type
             switch (field.type) {
@@ -588,10 +588,9 @@ bool MavlinkNetworkAnalyzer::should_process_packet(const std::string& src_ip, co
 
 std::string MavlinkNetworkAnalyzer::format_hex_output(const uint8_t* data, int length) const {
     std::ostringstream hex_stream;
-    hex_stream << "\n";
     
     for (int i = 0; i < length; i += 16) {
-        hex_stream << "\t    ";
+        hex_stream << "\n    ";
         
         // Display hexadecimal data, 16 bytes per line
         for (int j = 0; j < 16 && (i + j) < length; ++j) {

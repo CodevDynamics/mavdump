@@ -49,7 +49,7 @@ get_ubuntu_codename() {
 
 # Project information
 PROJECT_NAME="mavdump"
-VERSION="1.0.0"
+VERSION="1.0.1"
 ARCHITECTURE="$(dpkg --print-architecture)"
 UBUNTU_CODENAME="$(get_ubuntu_codename)"
 MAINTAINER="JinYan Wang <auto@auto.com>"
@@ -68,6 +68,14 @@ check_dependencies() {
     
     if ! command -v make &> /dev/null; then
         missing_deps+=("build-essential")
+    fi
+
+    if ! command -v git &> /dev/null; then
+        missing_deps+=("git")
+    fi
+
+    if ! dpkg -l | grep -q pkg-config; then
+        missing_deps+=("pkg-config")
     fi
     
     if ! dpkg -l | grep -q libpcap-dev; then
