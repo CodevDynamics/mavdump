@@ -15,7 +15,7 @@ MavlinkNetworkAnalyzer::MavlinkNetworkAnalyzer()
     , pcap_handle_(nullptr)
     , mavlink_channel_(0)
 {
-    // 初始化 MAVLink 状态
+    // Initialize MAVLink status
     memset(&mavlink_status_, 0, sizeof(mavlink_status_));
 }
 
@@ -26,11 +26,11 @@ MavlinkNetworkAnalyzer::~MavlinkNetworkAnalyzer() {
 bool MavlinkNetworkAnalyzer::parse_tcpdump_file(const std::string& file_path) {
     std::ifstream file(file_path);
     if (!file.is_open()) {
-        log("ERROR", "无法打开文件: " + file_path);
+        log("ERROR", "Cannot open file: " + file_path);
         return false;
     }
 
-    log("INFO", "开始解析 tcpdump 文件: " + file_path);
+    log("INFO", "Starting to parse tcpdump file: " + file_path);
     
     std::string line;
     std::regex udp_regex(R"((\d{2}:\d{2}:\d{2}\.\d+)\s+IP\s+(\d+\.\d+\.\d+\.\d+)\.(\d+)\s+>\s+(\d+\.\d+\.\d+\.\d+)\.(\d+):\s+UDP.*length\s+(\d+))");
@@ -46,7 +46,7 @@ bool MavlinkNetworkAnalyzer::parse_tcpdump_file(const std::string& file_path) {
         
         // 匹配 UDP 包头信息
         if (std::regex_search(line, match, udp_regex)) {
-            // 如果有之前的包数据，先处理它
+            // If there's previous packet data, process it first
             if (!packet_data.empty()) {
                 extract_mavlink_from_udp(packet_data.data(), packet_data.size(),
                                        current_src_ip, current_dst_ip,
@@ -55,7 +55,7 @@ bool MavlinkNetworkAnalyzer::parse_tcpdump_file(const std::string& file_path) {
                 packet_data.clear();
             }
             
-            // 保存新包的信息
+            // Save new packet information
             current_timestamp = match[1].str();
             current_src_ip = match[2].str();
             current_src_port = static_cast<uint16_t>(std::stoi(match[3].str()));
@@ -63,12 +63,12 @@ bool MavlinkNetworkAnalyzer::parse_tcpdump_file(const std::string& file_path) {
             current_dst_port = static_cast<uint16_t>(std::stoi(match[5].str()));
             
             if (verbose_) {
-                log("DEBUG", "检测到 UDP 包: " + current_src_ip + ":" + 
+                log("DEBUG", "Detected UDP packet: " + current_src_ip + ":" + 
                     std::to_string(current_src_port) + " -> " + 
                     current_dst_ip + ":" + std::to_string(current_dst_port));
             }
         }
-        // 匹配十六进制数据行
+        // Match hexadecimal data lines
         else if (std::regex_search(line, match, hex_regex)) {
             std::string hex_data = match[1].str();
             std::istringstream hex_stream(hex_data);
@@ -79,7 +79,7 @@ bool MavlinkNetworkAnalyzer::parse_tcpdump_file(const std::string& file_path) {
                     uint8_t byte = static_cast<uint8_t>(std::stoul(hex_byte, nullptr, 16));
                     packet_data.push_back(byte);
                 } else if (hex_byte.length() == 4) {
-                    // 处理两个字节连在一起的情况
+                    // Handle case where two bytes are concatenated
                     uint8_t byte1 = static_cast<uint8_t>(std::stoul(hex_byte.substr(0, 2), nullptr, 16));
                     uint8_t byte2 = static_cast<uint8_t>(std::stoul(hex_byte.substr(2, 2), nullptr, 16));
                     packet_data.push_back(byte1);
@@ -89,7 +89,7 @@ bool MavlinkNetworkAnalyzer::parse_tcpdump_file(const std::string& file_path) {
         }
     }
     
-    // 处理最后一个包
+    // Process the last packet
     if (!packet_data.empty()) {
         extract_mavlink_from_udp(packet_data.data(), packet_data.size(),
                                current_src_ip, current_dst_ip,
@@ -97,54 +97,54 @@ bool MavlinkNetworkAnalyzer::parse_tcpdump_file(const std::string& file_path) {
                                current_timestamp);
     }
     
-    log("INFO", "tcpdump 文件解析完成");
+    log("INFO", "tcpdump file parsing completed");
     return true;
 }
 
 bool MavlinkNetworkAnalyzer::start_packet_capture(const std::string& interface,
                                                  const std::string& filter_expression) {
     if (capturing_) {
-        log("WARNING", "数据包捕获已在运行中");
+        log("WARNING", "Packet capture is already running");
         return false;
     }
 
     char errbuf[PCAP_ERRBUF_SIZE];
     
-    // 打开网络接口 - 优化参数以提高响应速度
-    // 参数说明: interface, snaplen, promisc, timeout_ms, errbuf
-    // snaplen: 65536 (捕获完整数据包)
-    // promisc: 1 (混杂模式)  
-    // timeout_ms: 1 (1毫秒超时，大大提高响应速度)
+    // Open network interface - optimized parameters for better responsiveness
+    // Parameters: interface, snaplen, promisc, timeout_ms, errbuf
+    // snaplen: 65536 (capture complete packets)
+    // promisc: 1 (promiscuous mode)  
+    // timeout_ms: 1 (1ms timeout, greatly improves responsiveness)
     pcap_handle_ = pcap_open_live(interface.c_str(), 65536, 1, 1, errbuf);
     if (pcap_handle_ == nullptr) {
-        log("ERROR", "无法打开网络接口 " + interface + ": " + std::string(errbuf));
+        log("ERROR", "Cannot open network interface " + interface + ": " + std::string(errbuf));
         return false;
     }
 
-    // 设置非阻塞模式以进一步提高响应速度
+    // Set non-blocking mode to further improve responsiveness
     if (pcap_setnonblock(pcap_handle_, 1, errbuf) == -1) {
-        log("WARNING", "无法设置非阻塞模式: " + std::string(errbuf));
-        // 不是致命错误，继续运行
+        log("WARNING", "Cannot set non-blocking mode: " + std::string(errbuf));
+        // Not a fatal error, continue running
     }
 
-    // 设置缓冲区大小 - 减小缓冲区以降低延迟
-    int buffer_size = 1024; // 1MB缓冲区 (比默认的更小)
+    // Set buffer size - reduce buffer to lower latency
+    int buffer_size = 1024; // 1MB buffer (smaller than default)
     if (pcap_set_buffer_size(pcap_handle_, buffer_size) != 0) {
-        log("WARNING", "无法设置缓冲区大小");
-        // 不是致命错误，继续运行
+        log("WARNING", "Cannot set buffer size");
+        // Not a fatal error, continue running
     }
 
-    // 编译并设置过滤器
+    // Compile and set filter
     struct bpf_program filter_program;
     if (pcap_compile(pcap_handle_, &filter_program, filter_expression.c_str(), 0, PCAP_NETMASK_UNKNOWN) == -1) {
-        log("ERROR", "无法编译过滤器: " + filter_expression);
+        log("ERROR", "Cannot compile filter: " + filter_expression);
         pcap_close(pcap_handle_);
         pcap_handle_ = nullptr;
         return false;
     }
 
     if (pcap_setfilter(pcap_handle_, &filter_program) == -1) {
-        log("ERROR", "无法设置过滤器");
+        log("ERROR", "Cannot set filter");
         pcap_freecode(&filter_program);
         pcap_close(pcap_handle_);
         pcap_handle_ = nullptr;
@@ -155,30 +155,30 @@ bool MavlinkNetworkAnalyzer::start_packet_capture(const std::string& interface,
 
     capturing_ = true;
     
-    // 启动捕获线程
+    // Start capture thread
     capture_thread_ = std::thread([this]() {
-        log("INFO", "开始高频数据包捕获...");
+        log("INFO", "Starting high-frequency packet capture...");
         
-        // 使用高频轮询模式而不是无限阻塞
-        // 每次处理少量数据包以提高响应速度
+        // Use high-frequency polling mode instead of infinite blocking
+        // Process small number of packets each time to improve responsiveness
         while (capturing_) {
-            // 每次只处理10个数据包，然后立即返回
-            // 这样可以更快地检查 capturing_ 状态并减少延迟
+            // Process only 10 packets each time, then return immediately
+            // This allows faster checking of capturing_ status and reduces latency
             int result = pcap_dispatch(pcap_handle_, 10, packet_handler, reinterpret_cast<uint8_t*>(this));
             
             if (result == -1) {
-                // 发生错误
-                log("ERROR", "数据包捕获发生错误: " + std::string(pcap_geterr(pcap_handle_)));
+                // Error occurred
+                log("ERROR", "Packet capture error: " + std::string(pcap_geterr(pcap_handle_)));
                 break;
             } else if (result == 0) {
-                // 没有数据包，短暂休眠避免空转消耗CPU
-                std::this_thread::sleep_for(std::chrono::microseconds(100)); // 100微秒
+                // No packets, sleep briefly to avoid busy waiting
+                std::this_thread::sleep_for(std::chrono::microseconds(100)); // 100 microseconds
             }
-            // result > 0 表示成功处理了数据包，继续下一轮
+            // result > 0 means packets were successfully processed, continue next round
         }
     });
 
-    log("INFO", "数据包捕获已启动，接口: " + interface + ", 过滤器: " + filter_expression);
+    log("INFO", "Packet capture started, interface: " + interface + ", filter: " + filter_expression);
     return true;
 }
 
@@ -202,7 +202,7 @@ void MavlinkNetworkAnalyzer::stop_packet_capture() {
         pcap_handle_ = nullptr;
     }
     
-    log("INFO", "数据包捕获已停止");
+    log("INFO", "Packet capture stopped");
 }
 
 void MavlinkNetworkAnalyzer::packet_handler(uint8_t* user_data, 
@@ -210,7 +210,7 @@ void MavlinkNetworkAnalyzer::packet_handler(uint8_t* user_data,
                                            const uint8_t* packet_data) {
     auto* analyzer = reinterpret_cast<MavlinkNetworkAnalyzer*>(user_data);
     
-    // 获取当前时间戳
+    // Get current timestamp
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -233,16 +233,16 @@ void MavlinkNetworkAnalyzer::parse_packet(const uint8_t* packet_data, int packet
     const uint8_t* ip_header = packet_data + 14;
     const platform_iphdr* ip = reinterpret_cast<const platform_iphdr*>(ip_header);
     
-    // 检查是否为 UDP 包
+    // Check if it's a UDP packet
     if (IP_PROTOCOL(ip) != IPPROTO_UDP) {
         return;
     }
 
-    // 获取 UDP 头部
+    // Get UDP header
     const uint8_t* udp_header = ip_header + IP_HEADER_LENGTH(ip);
     const platform_udphdr* udp = reinterpret_cast<const platform_udphdr*>(udp_header);
     
-    // 获取源和目标地址
+    // Get source and destination addresses
     struct in_addr src_addr, dst_addr;
     src_addr.s_addr = IP_SOURCE_ADDR(ip);
     dst_addr.s_addr = IP_DEST_ADDR(ip);
@@ -252,7 +252,7 @@ void MavlinkNetworkAnalyzer::parse_packet(const uint8_t* packet_data, int packet
     uint16_t src_port = ntohs(UDP_SOURCE_PORT(udp));
     uint16_t dst_port = ntohs(UDP_DEST_PORT(udp));
     
-    // 获取 UDP payload
+    // Get UDP payload
     const uint8_t* udp_payload = udp_header + sizeof(platform_udphdr);
     int udp_payload_len = ntohs(UDP_LENGTH(udp)) - sizeof(platform_udphdr);
     
@@ -266,13 +266,18 @@ void MavlinkNetworkAnalyzer::extract_mavlink_from_udp(const uint8_t* udp_payload
                                                      const std::string& src_ip, const std::string& dst_ip,
                                                      uint16_t src_port, uint16_t dst_port,
                                                      const std::string& timestamp) {
-    // 在 UDP payload 中查找 MAVLink 消息
+    // Check IP filtering conditions
+    if (!should_process_packet(src_ip, dst_ip)) {
+        return; // Skip packets that don't match IP filtering conditions
+    }
+    
+    // Search for MAVLink messages in UDP payload
     for (int i = 0; i < payload_len; i++) {
         mavlink_message_t msg;
         mavlink_status_t status;
         
         if (mavlink_parse_char(mavlink_channel_, udp_payload[i], &msg, &status) == MAVLINK_FRAMING_OK) {
-            parse_mavlink_message(reinterpret_cast<const uint8_t*>(&msg), sizeof(msg),
+            parse_mavlink_message(reinterpret_cast<const uint8_t*>(&msg), msg.len + MAVLINK_NUM_NON_PAYLOAD_BYTES,
                                 src_ip, dst_ip, src_port, dst_port, timestamp);
         }
     }
@@ -284,6 +289,11 @@ void MavlinkNetworkAnalyzer::parse_mavlink_message(const uint8_t* mavlink_data, 
                                                   const std::string& timestamp) {
     const mavlink_message_t* msg = reinterpret_cast<const mavlink_message_t*>(mavlink_data);
     
+    // Check if this message should be processed (filtering check)
+    if (!should_process_message(msg->msgid)) {
+        return; // Skip unwanted messages
+    }
+    
     std::ostringstream log_stream;
     log_stream << timestamp << " " << src_ip << ":" << src_port << " > " << dst_ip << ":" << dst_port << " ";
     log_stream << std::setw(3) << std::setfill(' ') << data_len << " "
@@ -294,8 +304,8 @@ void MavlinkNetworkAnalyzer::parse_mavlink_message(const uint8_t* mavlink_data, 
     
     if (should_show_verbose(msg->msgid)) {
         std::string msg_name = get_mavlink_message_name(msg->msgid);
-        log_stream << "\n\t" << msg_name << "\n\t";
-        // 如果启用了十六进制显示，显示原始消息数据
+        log_stream << "\n\t" << msg_name;
+        // If hexadecimal display is enabled, show raw message data
         if (show_hex_) {
             log_stream << format_hex_output(mavlink_data, data_len);
         } else {
@@ -314,7 +324,7 @@ std::string MavlinkNetworkAnalyzer::get_mavlink_message_name(uint32_t msg_id) {
         return std::string(info->name);
     }
 #endif
-    // 如果没有找到消息信息，返回未知消息类型
+    // If no message info found, return unknown message type
     return "UNKNOWN_" + std::to_string(msg_id);
 }
 
@@ -330,19 +340,19 @@ std::string MavlinkNetworkAnalyzer::format_mavlink_message_content(const mavlink
             const mavlink_field_info_t& field = info->fields[i];
             content_stream << "\n\t  " << field.name << ": ";
             
-            // 根据字段类型格式化输出
+            // Format output based on field type
             switch (field.type) {
                 case MAVLINK_TYPE_CHAR:
                     if (field.array_length > 1) {
-                        // char数组，作为字符串处理
+                        // char array, process as string
                         char str_buf[256] = {0};
                         size_t copy_len = std::min(static_cast<size_t>(field.array_length), sizeof(str_buf) - 1);
                         memcpy(str_buf, payload + field.wire_offset, copy_len);
-                        // 确保字符串以null结尾
+                        // Ensure string is null-terminated
                         str_buf[copy_len] = '\0';
                         content_stream << "\"" << str_buf << "\"";
                     } else {
-                        // 单个char
+                        // Single char
                         char c = *reinterpret_cast<const char*>(payload + field.wire_offset);
                         content_stream << "'" << c << "'";
                     }
@@ -493,7 +503,7 @@ std::string MavlinkNetworkAnalyzer::format_mavlink_message_content(const mavlink
                     break;
                     
                 default:
-                    content_stream << "未知类型(" << static_cast<int>(field.type) << ")";
+                    content_stream << "Unknown type(" << static_cast<int>(field.type) << ")";
                     break;
             }
         }
@@ -504,13 +514,13 @@ std::string MavlinkNetworkAnalyzer::format_mavlink_message_content(const mavlink
 
 std::string MavlinkNetworkAnalyzer::format_mavlink_message_content_short(const mavlink_message_t& msg) {
     std::ostringstream content_stream;
-    // 对于常见消息类型，添加简短的关键信息
+    // For common message types, add brief key information
     switch (msg.msgid) {
-        case MAVLINK_MSG_ID_HEARTBEAT: {
+        case MAVLINK_MSG_ID_COMMAND_ACK: {
             content_stream << " ";
             mavlink_command_ack_t cmd_ack;
             mavlink_msg_command_ack_decode(&msg, &cmd_ack);
-            content_stream << ",cm=" << static_cast<int>(cmd_ack.command);
+            content_stream << "cm=" << static_cast<int>(cmd_ack.command);
             content_stream << ",ts=" << static_cast<int>(cmd_ack.target_system);
             content_stream << ",tc=" << static_cast<int>(cmd_ack.target_component);
             content_stream << ",rs=" << static_cast<int>(cmd_ack.result);
@@ -520,8 +530,11 @@ std::string MavlinkNetworkAnalyzer::format_mavlink_message_content_short(const m
             content_stream << " ";
             mavlink_command_long_t cmd_long;
             mavlink_msg_command_long_decode(&msg, &cmd_long);
-            content_stream << ",cm=" << static_cast<int>(cmd_long.command);
+            content_stream << "cm=" << static_cast<int>(cmd_long.command);
             content_stream << ",sq=" << static_cast<int>(msg.seq);
+            if(cmd_long.command == MAV_CMD_REQUEST_MESSAGE) {
+                content_stream << ",rq=" << static_cast<int>(cmd_long.param1);
+            }
             break;
         }
         default:
@@ -532,39 +545,66 @@ std::string MavlinkNetworkAnalyzer::format_mavlink_message_content_short(const m
 }
 
 bool MavlinkNetworkAnalyzer::should_show_verbose(uint32_t msg_id) const {
-    // 如果设置了全局verbose模式，显示所有消息的详细信息
+    // If global verbose mode is set, show detailed info for all messages
     if (verbose_) {
         return true;
     }
     
-    // 如果设置了特定的消息ID列表，只显示列表中的消息
+    // If specific message ID list is set, only show messages in the list
     if (!verbose_message_ids_.empty()) {
         return std::find(verbose_message_ids_.begin(), verbose_message_ids_.end(), msg_id) 
                != verbose_message_ids_.end();
     }
     
-    // 默认不显示详细信息
+    // Default: don't show detailed info
     return false;
+}
+
+bool MavlinkNetworkAnalyzer::should_process_message(uint32_t msg_id) const {
+    // If no filter ID list is set, process all messages
+    if (filter_message_ids_.empty()) {
+        return true;
+    }
+    
+    // If filter ID list is set, only process messages in the list
+    return std::find(filter_message_ids_.begin(), filter_message_ids_.end(), msg_id) 
+           != filter_message_ids_.end();
+}
+
+bool MavlinkNetworkAnalyzer::should_process_packet(const std::string& src_ip, const std::string& dst_ip) const {
+    // Check source IP filter condition
+    if (!filter_source_ip_.empty() && src_ip != filter_source_ip_) {
+        return false;
+    }
+    
+    // Check destination IP filter condition
+    if (!filter_destination_ip_.empty() && dst_ip != filter_destination_ip_) {
+        return false;
+    }
+    
+    // If all filter conditions are met, process this packet
+    return true;
 }
 
 std::string MavlinkNetworkAnalyzer::format_hex_output(const uint8_t* data, int length) const {
     std::ostringstream hex_stream;
+    hex_stream << "\n";
     
     for (int i = 0; i < length; i += 16) {
         hex_stream << "\t    ";
         
-        // 显示十六进制数据，每行16个字节
+        // Display hexadecimal data, 16 bytes per line
         for (int j = 0; j < 16 && (i + j) < length; ++j) {
             hex_stream << std::hex << std::setfill('0') << std::setw(2) 
                       << static_cast<int>(data[i + j]) << " ";
         }
         
-        // 如果这一行不足16个字节，用空格补齐对齐
+        // If this line has less than 16 bytes, pad with spaces for alignment
         for (int j = (length - i > 16) ? 16 : (length - i); j < 16; ++j) {
             hex_stream << "   ";
         }
         
-        // 显示ASCII字符（可打印字符）
+        // Display ASCII characters (printable characters)
         hex_stream << " |";
         for (int j = 0; j < 16 && (i + j) < length; ++j) {
             char c = static_cast<char>(data[i + j]);
@@ -574,10 +614,10 @@ std::string MavlinkNetworkAnalyzer::format_hex_output(const uint8_t* data, int l
                 hex_stream << '.';
             }
         }
-        hex_stream << "|\n";
+        hex_stream << "|";
     }
     
-    hex_stream << std::dec; // 恢复十进制格式
+    hex_stream << std::dec; // Restore decimal format
     return hex_stream.str();
 }
 

@@ -9,6 +9,8 @@ endif()
 # 编译器警告设置
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wreturn-type)
+  # 抑制 MAVLink 库的 packed member 警告
+  add_compile_options(-Wno-address-of-packed-member)
 endif()
 
 # 平台检测和平台特定设置
