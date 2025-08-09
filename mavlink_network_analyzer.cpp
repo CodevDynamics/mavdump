@@ -531,8 +531,10 @@ std::string MavlinkNetworkAnalyzer::format_mavlink_message_content_short(const m
             mavlink_command_long_t cmd_long;
             mavlink_msg_command_long_decode(&msg, &cmd_long);
             content_stream << "cm=" << static_cast<int>(cmd_long.command);
+            content_stream << ",ts=" << static_cast<int>(cmd_long.target_system);
+            content_stream << ",tc=" << static_cast<int>(cmd_long.target_component);
             content_stream << ",sq=" << static_cast<int>(msg.seq);
-            if(cmd_long.command == MAV_CMD_REQUEST_MESSAGE) {
+            if(cmd_long.command == MAV_CMD_REQUEST_MESSAGE || cmd_long.command == MAV_CMD_SET_MESSAGE_INTERVAL) {
                 content_stream << ",rq=" << static_cast<int>(cmd_long.param1);
             }
             break;
