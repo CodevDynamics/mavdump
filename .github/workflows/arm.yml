@@ -1,0 +1,120 @@
+name: Build DEB Packages for ARM64
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-jammy-arm64:
+    runs-on: ubuntu-22.04-arm
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          git \
+          libpcap-dev \
+          pkg-config \
+          debhelper \
+          devscripts
+
+    - name: Build DEB package for Jammy ARM64
+      run: |
+        chmod +x build_deb.sh
+        ./build_deb.sh
+
+    - name: Upload Jammy ARM64 DEB artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: mavdump-jammy-arm64
+        path: "*.deb"
+
+  build-focal-arm64:
+    runs-on: ubuntu-22.04-arm
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Build DEB package for Focal ARM64 using Docker
+      run: |
+        # 创建 Dockerfile for Focal
+        cat > Dockerfile << 'EOF'
+        FROM ubuntu:20.04
+
+        # 设置非交互模式
+        ENV DEBIAN_FRONTEND=noninteractive
+        ENV TZ=Asia/Shanghai
+
+        # 安装依赖
+        RUN apt-get update && apt-get install -y \
+            build-essential \
+            cmake \
+            git \
+            libpcap-dev \
+            pkg-config \
+            debhelper \
+            devscripts \
+            tzdata \
+            && rm -rf /var/lib/apt/lists/*
+
+        # 设置工作目录
+        WORKDIR /workspace
+
+        # 复制源码
+        COPY . .
+
+        # 构建 DEB 包
+        RUN chmod +x build_deb.sh && ./build_deb.sh
+        EOF
+
+        # 构建 Docker 镜像并运行
+        docker build -t mavdump-focal-arm64-builder .
+        
+        # 创建容器并复制构建结果
+        docker create --name mavdump-container mavdump-focal-arm64-builder
+        docker cp mavdump-container:/workspace/ ./build-output/
+        docker rm mavdump-container
+        
+        # 移动 DEB 文件到当前目录
+        find ./build-output -name "*.deb" -exec cp {} . \;
+
+    - name: Upload Focal ARM64 DEB artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: mavdump-focal-arm64
+        path: "*.deb"
+
+  create-release:
+    needs: [build-jammy-arm64, build-focal-arm64]
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+    - name: Download Jammy ARM64 artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: mavdump-jammy-arm64
+        path: ./artifacts/jammy-arm64
+
+    - name: Download Focal ARM64 artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: mavdump-focal-arm64
+        path: ./artifacts/focal-arm64
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: |
+          ./artifacts/jammy-arm64/*.deb
+          ./artifacts/focal-arm64/*.deb
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
