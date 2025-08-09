@@ -47,9 +47,78 @@ get_ubuntu_codename() {
     fi
 }
 
-# Project information
+# Extract version from tag
+extract_version_from_tag() {
+    local tag="$1"
+    # Remove 'v' prefix if it exists (e.g., v1.2.3 -> 1.2.3)
+    echo "${tag#v}"
+}
+
+# Parse command line arguments
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --tag|-t)
+                if [[ -n "${2:-}" && "${2:-}" != --* ]]; then
+                    TAG_VERSION="$2"
+                    VERSION=$(extract_version_from_tag "$TAG_VERSION")
+                    shift 2
+                else
+                    print_error "Error: --tag requires a value"
+                    exit 1
+                fi
+                ;;
+            --version)
+                if [[ -n "${2:-}" && "${2:-}" != --* ]]; then
+                    VERSION="$2"
+                    shift 2
+                else
+                    print_error "Error: --version requires a value"
+                    exit 1
+                fi
+                ;;
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            --clean)
+                CLEAN_ONLY=true
+                shift
+                ;;
+            *)
+                print_error "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+}
+
+# Show help information
+show_help() {
+    echo "Usage: $0 [options]"
+    echo ""
+    echo "Options:"
+    echo "  --tag, -t TAG      Use version from tag (e.g., v1.2.3 or 1.2.3)"
+    echo "  --version VERSION  Specify version directly"
+    echo "  --clean           Clean build files only"
+    echo "  --help, -h        Show this help information"
+    echo ""
+    echo "Examples:"
+    echo "  $0                    # Use default version ($DEFAULT_VERSION)"
+    echo "  $0 --tag v1.2.3      # Extract version from tag (1.2.3)"
+    echo "  $0 --version 2.0.0    # Use specific version"
+    echo "  $0 --clean           # Clean build files only"
+    echo ""
+    echo "This script will build the mavdump project and generate an Ubuntu deb package."
+}
+
+# Default values
 PROJECT_NAME="mavdump"
-VERSION="1.0.1"
+DEFAULT_VERSION="1.0.1"
+VERSION="$DEFAULT_VERSION"
+TAG_VERSION=""
+CLEAN_ONLY=false
 ARCHITECTURE="$(dpkg --print-architecture)"
 UBUNTU_CODENAME="$(get_ubuntu_codename)"
 MAINTAINER="JinYan Wang <auto@auto.com>"
@@ -380,7 +449,12 @@ main() {
     # Display build information
     print_status "Build Configuration:"
     echo "  Project Name: ${PROJECT_NAME}"
-    echo "  Version: ${VERSION}"
+    if [[ -n "$TAG_VERSION" ]]; then
+        echo "  Tag: ${TAG_VERSION}"
+        echo "  Version: ${VERSION} (extracted from tag)"
+    else
+        echo "  Version: ${VERSION}"
+    fi
     echo "  Architecture: ${ARCHITECTURE}"
     echo "  Ubuntu Codename: ${UBUNTU_CODENAME}"
     echo "  Package Name: ${PROJECT_NAME}_${VERSION}-${UBUNTU_CODENAME}_${ARCHITECTURE}.deb"
@@ -402,29 +476,15 @@ main() {
     print_success "All steps completed!"
 }
 
-# Script parameter handling
-case "${1:-}" in
-    --help|-h)
-        echo "Usage: $0 [options]"
-        echo ""
-        echo "Options:"
-        echo "  --help, -h     Show this help information"
-        echo "  --clean        Clean build files only"
-        echo ""
-        echo "This script will build the mavdump project and generate an Ubuntu deb package."
-        exit 0
-        ;;
-    --clean)
-        clean_previous_builds
-        print_success "Cleanup completed"
-        exit 0
-        ;;
-    "")
-        main
-        ;;
-    *)
-        print_error "Unknown option: $1"
-        echo "Use --help to see help information"
-        exit 1
-        ;;
-esac
+# Parse command line arguments first
+parse_arguments "$@"
+
+# Handle clean only option
+if [[ "$CLEAN_ONLY" == "true" ]]; then
+    clean_previous_builds
+    print_success "Cleanup completed"
+    exit 0
+fi
+
+# Run main build process
+main

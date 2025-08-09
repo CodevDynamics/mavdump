@@ -1,11 +1,8 @@
 name: Build DEB Packages for ARM64
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+  release:
+    types: [published, created]
 
 jobs:
   build-jammy-arm64:
@@ -29,7 +26,11 @@ jobs:
     - name: Build DEB package for Jammy ARM64
       run: |
         chmod +x build_deb.sh
-        ./build_deb.sh
+        if [ -n "${{ github.event.release.tag_name }}" ]; then
+          ./build_deb.sh --tag "${{ github.event.release.tag_name }}"
+        else
+          ./build_deb.sh
+        fi
 
     - name: Upload Jammy ARM64 DEB artifact
       uses: actions/upload-artifact@v4
@@ -71,12 +72,24 @@ jobs:
         # 复制源码
         COPY . .
 
+        # 构建参数
+        ARG BUILD_TAG=""
+
         # 构建 DEB 包
-        RUN chmod +x build_deb.sh && ./build_deb.sh
+        RUN chmod +x build_deb.sh && \
+            if [ -n "$BUILD_TAG" ]; then \
+                ./build_deb.sh --tag "$BUILD_TAG"; \
+            else \
+                ./build_deb.sh; \
+            fi
         EOF
 
         # 构建 Docker 镜像并运行
-        docker build -t mavdump-focal-arm64-builder .
+        if [ -n "${{ github.event.release.tag_name }}" ]; then
+          docker build --build-arg BUILD_TAG="${{ github.event.release.tag_name }}" -t mavdump-focal-arm64-builder .
+        else
+          docker build -t mavdump-focal-arm64-builder .
+        fi
         
         # 创建容器并复制构建结果
         docker create --name mavdump-container mavdump-focal-arm64-builder
@@ -92,10 +105,9 @@ jobs:
         name: mavdump-focal-arm64
         path: "*.deb"
 
-  create-release:
+  upload-to-release:
     needs: [build-jammy-arm64, build-focal-arm64]
     runs-on: ubuntu-22.04
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
     - name: Download Jammy ARM64 artifact
       uses: actions/download-artifact@v4
@@ -109,12 +121,12 @@ jobs:
         name: mavdump-focal-arm64
         path: ./artifacts/focal-arm64
 
-    - name: Create Release
+    - name: Upload DEB packages to Release
       uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
           ./artifacts/jammy-arm64/*.deb
           ./artifacts/focal-arm64/*.deb
+        upload_url: ${{ github.event.release.upload_url }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
